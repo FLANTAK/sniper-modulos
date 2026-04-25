@@ -1,9 +1,7 @@
 // ============================================================
-//  SNIPER MÓDULO — 99Freelas Troca de Perfis
-//  Convertido de Console DevTools para JS puro (extensão Chrome)
+//  SNIPER MÓDULO — 99Freelas Troca de Perfis v2
+//  SEM dependência de chrome.storage (já era vanilla JS)
 //  Aparece apenas em: /profile/edit e /profile
-//  O que mudou: removida dependência de console, adicionado auto-init
-//  O que NÃO mudou: nenhuma funcionalidade
 // ============================================================
 
 (function () {
@@ -12,8 +10,11 @@
     if (window.__sniper_perfis_ativo) return;
     window.__sniper_perfis_ativo = true;
 
+    // Só roda nas páginas de perfil
+    if (!/\/(profile)(\/edit)?$/i.test(window.location.pathname)) return;
+
     // =========================================================
-    //  PERFIS (dados originais mantidos integralmente)
+    //  PERFIS
     // =========================================================
 
     const PERFIS = {
@@ -218,7 +219,7 @@ Envie "GROWTH" e te mostrarei como funciona na prática.`,
     };
 
     // =========================================================
-    //  UTILITÁRIOS (idênticos ao original)
+    //  UTILITÁRIOS
     // =========================================================
 
     const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -268,7 +269,7 @@ Envie "GROWTH" e te mostrarei como funciona na prática.`,
         Array.from(select.options).forEach(o => { o.selected=false; });
         values.forEach(val => {
             const opt = select.querySelector(`option[value="${val}"]`);
-            if (opt) { opt.selected=true; log('   + '+opt.text); }
+            if (opt) { opt.selected=true; }
         });
         select.dispatchEvent(new Event('change', { bubbles:true }));
         await sleep(200);
