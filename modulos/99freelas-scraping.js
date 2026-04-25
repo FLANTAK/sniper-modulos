@@ -1,49 +1,40 @@
 // ============================================================
-//  SNIPER MÓDULO — 99Freelas Scraping + Sheets
-//  Convertido de TamperMonkey para JS puro (extensão Chrome)
-//  O que mudou: GM_* → equivalentes nativos (fetch, storage, Notification)
-//  O que NÃO mudou: nenhuma funcionalidade
+//  SNIPER MÓDULO — 99Freelas Scraping + Sheets v2
+//  CORREÇÃO: chrome.storage → localStorage (injeção via javascript:)
 // ============================================================
 
 (function () {
     'use strict';
 
-    // Evita reinjeção dupla na mesma página
     if (window.__sniper_scraping_ativo) return;
     window.__sniper_scraping_ativo = true;
 
     // =========================================================
-    //  SUBSTITUTOS DOS GM_* (sem dependência do TamperMonkey)
+    //  STORAGE — localStorage (funciona sem contexto de extensão)
     // =========================================================
 
-    // GM_setValue / GM_getValue → chrome.storage.local
-    // Usamos wrapper síncrono com cache em memória para manter
-    // compatibilidade com o código original que chama sync
     const _store = {};
 
     function GM_setValue(chave, valor) {
         _store[chave] = valor;
-        chrome.storage.local.set({ [chave]: valor });
+        try { localStorage.setItem('sniper_' + chave, JSON.stringify(valor)); } catch(e) {}
     }
 
     function GM_getValue(chave, padrao) {
-        return (_store[chave] !== undefined) ? _store[chave] : padrao;
+        if (_store[chave] !== undefined) return _store[chave];
+        try {
+            const raw = localStorage.getItem('sniper_' + chave);
+            if (raw !== null) { const v = JSON.parse(raw); _store[chave] = v; return v; }
+        } catch(e) {}
+        return padrao;
     }
 
-    // Carrega o storage no início para popular o cache
-    chrome.storage.local.get(null, (items) => {
-        Object.assign(_store, items);
-        inicializarPainelScraping(); // Inicia após carregar storage
-    });
-
-    // GM_addStyle → cria <style> no DOM
     function GM_addStyle(css) {
         const el = document.createElement('style');
         el.textContent = css;
         document.head.appendChild(el);
     }
 
-    // GM_notification → Notification API nativa
     function GM_notification({ title, text, timeout }) {
         if (Notification.permission === 'granted') {
             const n = new Notification(title, { body: text });
@@ -55,7 +46,6 @@
         }
     }
 
-    // GM_xmlhttpRequest → fetch nativo
     function GM_xmlhttpRequest({ method, url, headers, data, onload, onerror }) {
         fetch(url, {
             method: method || 'GET',
@@ -69,13 +59,8 @@
         .catch(err => onerror && onerror(err));
     }
 
-    // GM_setClipboard → clipboard API (não usado ativamente mas mantém compatibilidade)
-    function GM_setClipboard(text) {
-        navigator.clipboard?.writeText(text).catch(() => {});
-    }
-
     // =========================================================
-    //  MÓDULO 1 — SCRAPING (original mantido integralmente)
+    //  MÓDULO — SCRAPING (lógica original intacta)
     // =========================================================
 
     const LISTAS = {
@@ -200,10 +185,10 @@
 
     // Loop agendado (1 minuto)
     setInterval(() => {
-        const horaAgendada     = GM_getValue('robo99_hora_agendada', '');
-        const listaAgendada    = GM_getValue('robo99_lista_agendada', '1');
-        const dataHoje         = new Date().toLocaleDateString('pt-BR');
-        const ultimaDataRodou  = GM_getValue('robo99_ultima_data_rodou', '');
+        const horaAgendada    = GM_getValue('robo99_hora_agendada', '');
+        const listaAgendada   = GM_getValue('robo99_lista_agendada', '1');
+        const dataHoje        = new Date().toLocaleDateString('pt-BR');
+        const ultimaDataRodou = GM_getValue('robo99_ultima_data_rodou', '');
         if (!horaAgendada) return;
         const agora = new Date();
         const horaAtual = String(agora.getHours()).padStart(2,'0') + ':' + String(agora.getMinutes()).padStart(2,'0');
@@ -214,7 +199,7 @@
     }, 60000);
 
     // =========================================================
-    //  INJEÇÃO DA INTERFACE
+    //  INTERFACE
     // =========================================================
 
     GM_addStyle(`
@@ -226,19 +211,19 @@
         .f99-btn-lista:hover { opacity:0.85; }
         #f99-status { margin-top:8px; padding:8px 10px; background:#0f3460; border-radius:6px; font-size:11px; color:#ccc; }
         #f99-resultado { display:none; margin-top:10px; }
-        #f99-textarea { width:100%; height:80px; background:#0d1117; border:1px solid #333; color:#a8ff78; font-size:10px; padding:6px; }
+        #f99-textarea { width:100%; height:80px; background:#0d1117; border:1px solid #333; color:#a8ff78; font-size:10px; padding:6px; box-sizing:border-box; }
         .box-auto { background:#0f0f23; border:1px solid #4caf50; padding:10px; border-radius:8px; margin-top:10px; }
-        .box-auto input, .box-auto select { width:100%; background:#1a1a2e; color:#fff; border:1px solid #555; padding:5px; margin-top:4px; margin-bottom:8px; border-radius:4px; }
+        .box-auto input, .box-auto select { width:100%; background:#1a1a2e; color:#fff; border:1px solid #555; padding:5px; margin-top:4px; margin-bottom:8px; border-radius:4px; box-sizing:border-box; }
         .box-auto button { width:100%; background:#4caf50; color:white; border:none; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold; }
     `);
 
     function inicializarPainelScraping() {
-        if (document.getElementById('f99-container')) return; // já existe
+        if (document.getElementById('f99-container')) return;
 
         const container = document.createElement('div');
         container.id = 'f99-container';
         container.innerHTML = `
-            <div id="f99-header"><span>⚡ 99F Scraping & Sheets</span><button id="f99-minimizar" style="background:none;border:none;color:#aaa;cursor:pointer;">−</button></div>
+            <div id="f99-header"><span>⚡ 99F Scraping & Sheets</span><button id="f99-minimizar" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:16px;">−</button></div>
             <div id="f99-body">
                 <button class="f99-btn-lista" id="f99-btn-1" style="background:#e53935">🔴 Lista 01 — Menor prop + Urgente</button>
                 <button class="f99-btn-lista" id="f99-btn-2" style="background:#1565C0">🔵 Lista 02 — Mais recentes (p.47–76)</button>
@@ -253,18 +238,13 @@
                     <label style="font-size:10px;">URL Webhook (App Script):</label>
                     <input type="text" id="auto-webhook" placeholder="https://script.google.com/macros/s/..." value="${GM_getValue('robo99_webhook_url', '')}">
                     <div style="display:flex;gap:10px;">
-                        <div style="flex:1;">
-                            <label style="font-size:10px;">Hora (HH:MM):</label>
-                            <input type="time" id="auto-hora" value="${GM_getValue('robo99_hora_agendada', '')}">
-                        </div>
-                        <div style="flex:1;">
-                            <label style="font-size:10px;">Lista:</label>
-                            <select id="auto-lista">
-                                <option value="1" ${GM_getValue('robo99_lista_agendada','1')==='1'?'selected':''}>Lista 01</option>
-                                <option value="2" ${GM_getValue('robo99_lista_agendada','1')==='2'?'selected':''}>Lista 02</option>
-                                <option value="3" ${GM_getValue('robo99_lista_agendada','1')==='3'?'selected':''}>Lista 03</option>
-                            </select>
-                        </div>
+                        <div style="flex:1;"><label style="font-size:10px;">Hora (HH:MM):</label><input type="time" id="auto-hora" value="${GM_getValue('robo99_hora_agendada', '')}"></div>
+                        <div style="flex:1;"><label style="font-size:10px;">Lista:</label>
+                        <select id="auto-lista">
+                            <option value="1" ${GM_getValue('robo99_lista_agendada','1')==='1'?'selected':''}>Lista 01</option>
+                            <option value="2" ${GM_getValue('robo99_lista_agendada','1')==='2'?'selected':''}>Lista 02</option>
+                            <option value="3" ${GM_getValue('robo99_lista_agendada','1')==='3'?'selected':''}>Lista 03</option>
+                        </select></div>
                     </div>
                     <button id="auto-salvar">Salvar Agendamento</button>
                 </div>
@@ -278,9 +258,9 @@
             enviarParaGoogleSheets(document.getElementById('f99-textarea').value);
         });
         document.getElementById('auto-salvar').addEventListener('click', () => {
-            GM_setValue('robo99_webhook_url', document.getElementById('auto-webhook').value);
+            GM_setValue('robo99_webhook_url',   document.getElementById('auto-webhook').value);
             GM_setValue('robo99_hora_agendada', document.getElementById('auto-hora').value);
-            GM_setValue('robo99_lista_agendada', document.getElementById('auto-lista').value);
+            GM_setValue('robo99_lista_agendada',document.getElementById('auto-lista').value);
             GM_setValue('robo99_ultima_data_rodou', '');
             const btn = document.getElementById('auto-salvar');
             btn.textContent = '✅ Salvo!';
@@ -294,5 +274,8 @@
             document.getElementById('f99-minimizar').textContent = minimizado ? '+' : '−';
         });
     }
+
+    // Inicializa imediatamente (sem esperar chrome.storage)
+    inicializarPainelScraping();
 
 })();
