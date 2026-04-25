@@ -1,8 +1,6 @@
 // ============================================================
-//  SNIPER MÓDULO — 99Freelas Disparo Automático
-//  Convertido de TamperMonkey para JS puro (extensão Chrome)
-//  O que mudou: GM_* → fetch nativo + chrome.storage
-//  O que NÃO mudou: nenhuma funcionalidade
+//  SNIPER MÓDULO — 99Freelas Disparo Automático v2
+//  CORREÇÃO: chrome.storage → localStorage (injeção via javascript:)
 // ============================================================
 
 (function () {
@@ -12,18 +10,36 @@
     window.__sniper_disparo_ativo = true;
 
     // =========================================================
-    //  SUBSTITUTOS GM_*
+    //  STORAGE — localStorage (sem dependência de chrome.storage)
     // =========================================================
 
     const _store = {};
 
     function GM_setValue(chave, valor) {
         _store[chave] = valor;
-        chrome.storage.local.set({ [chave]: valor });
+        try { localStorage.setItem('sniper_' + chave, JSON.stringify(valor)); } catch(e) {}
     }
 
     function GM_getValue(chave, padrao) {
-        return (_store[chave] !== undefined) ? _store[chave] : padrao;
+        if (_store[chave] !== undefined) return _store[chave];
+        try {
+            const raw = localStorage.getItem('sniper_' + chave);
+            if (raw !== null) { const v = JSON.parse(raw); _store[chave] = v; return v; }
+        } catch(e) {}
+        return padrao;
+    }
+
+    // Carrega todas as chaves do localStorage para o _store em memória
+    function carregarStorage() {
+        try {
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('sniper_')) {
+                    const chave = key.replace('sniper_', '');
+                    try { _store[chave] = JSON.parse(localStorage.getItem(key)); } catch(e) {}
+                }
+            }
+        } catch(e) {}
     }
 
     function GM_notification({ title, text, timeout }) {
@@ -66,7 +82,7 @@
     const K_DELAY   = 'd99_delay';
 
     // =========================================================
-    //  UTILITÁRIOS (idênticos ao original)
+    //  UTILITÁRIOS
     // =========================================================
 
     const sleep    = ms => new Promise(r => setTimeout(r, ms));
@@ -159,7 +175,6 @@
 
     // =========================================================
     //  COMUNICAÇÃO COM GOOGLE SHEETS
-    //  GM_xmlhttpRequest → fetch nativo
     // =========================================================
 
     async function requisicaoFetch(method, url, dados) {
@@ -188,7 +203,7 @@
     }
 
     // =========================================================
-    //  LÓGICA DE EXECUÇÃO (idêntica ao original)
+    //  LÓGICA DE EXECUÇÃO
     // =========================================================
 
     async function executarNaPaginaAtual(scriptTexto) {
@@ -420,12 +435,10 @@
         document.addEventListener('mousemove',e=>{ if(!drag)return; painel.style.right=Math.max(0,ir-(e.clientX-sx))+'px'; painel.style.bottom=Math.max(0,ib+(e.clientY-sy))+'px'; });
         document.addEventListener('mouseup',()=>{ drag=false; document.body.style.userSelect=''; });
 
-        // Minimizar / fechar / expandir
         document.getElementById('d99-btn-min').addEventListener('click',()=>{ document.getElementById('d99-corpo').style.display='none'; painel.style.display='none'; badge.style.display='block'; });
         document.getElementById('d99-btn-fechar').addEventListener('click',()=>{ painel.remove(); badge.remove(); });
         badge.addEventListener('click',()=>{ painel.style.display='block'; badge.style.display='none'; document.getElementById('d99-corpo').style.display='flex'; });
 
-        // Script
         const scriptEl=document.getElementById('d99-script-texto');
         const badgeSalvo=document.getElementById('d99-badge-salvo');
         document.getElementById('d99-btn-salvar').addEventListener('click',()=>{ GM_setValue(K_SCRIPT,scriptEl.value); badgeSalvo.textContent='✓ Salvo!'; badgeSalvo.className='d99-badge ok'; setTimeout(()=>badgeSalvo.textContent='✓ Salvo',2000); });
@@ -447,7 +460,8 @@
         if(estado.rodando && estado.fila.length>0 && estado.indice<estado.fila.length){ retomarAutomacao(); }
     }
 
-    // Carrega storage antes de iniciar
-    chrome.storage.local.get(null, (items) => { Object.assign(_store, items); init(); });
+    // Inicializa direto — sem chrome.storage.local.get
+    carregarStorage();
+    init();
 
 })();
